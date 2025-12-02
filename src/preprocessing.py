@@ -1,45 +1,57 @@
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder
 
+def preprocess_dataset(df):
+    """
+    Preprocess the full dataset for training
+    """
+    df = df.copy()
 
-def load_data(path):
-    """Load CSV dataset."""
-    data = pd.read_csv(path)
-    return data
-
-
-def clean_data(data):
-    """Clean dataset: drop ID, handle missing TotalCharges."""
-    if 'customerID' in data.columns:
-        data.drop('customerID', axis=1, inplace=True)
-
-    # Convert TotalCharges to numeric, fill NaN with median
-    data['TotalCharges'] = pd.to_numeric(data['TotalCharges'], errors='coerce')
-    data['TotalCharges'].fillna(data['TotalCharges'].median(), inplace=True)
-    return data
-
-
-def preprocess_data(data):
-    """Encode categorical variables and scale features."""
-    # Encode categorical variables
-    cat_cols = data.select_dtypes(include='object').columns.tolist()
-    if 'Churn' in cat_cols:
-        cat_cols.remove('Churn')
-
-    for col in cat_cols:
-        le = LabelEncoder()
-        data[col] = le.fit_transform(data[col])
+    # Fix TotalCharges
+    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+    df['TotalCharges'].fillna(df['TotalCharges'].median(), inplace=True)
 
     # Encode target
-    if data['Churn'].dtype == 'object':
-        data['Churn'] = data['Churn'].map({'Yes': 1, 'No': 0})
+    df['Churn'] = df['Churn'].map({'Yes': 1, 'No': 0})
 
-    # Separate features and target
-    X = data.drop('Churn', axis=1)
-    y = data['Churn']
+    # Encode categorical features
+    cat_cols = df.select_dtypes(include='object').columns.tolist()
+    cat_cols.remove('customerID') if 'customerID' in cat_cols else None
 
-    # Scale features
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    encoders = {}
+    for col in cat_cols:
+        le = LabelEncoder()
+        df[col] = le.fit_transform(df[col])
+        encoders[col] = le
 
-    return X_scaled, y, scaler
+    # Split features and target
+    X = df.drop(columns=['customerID', 'Churn'], errors='ignore')
+    y = df['Churn']
+
+    return X, y, encoders
+
+def preprocess_single_customer(df, scaler, encoders):
+    """
+    Preprocess a single customer DataFrame for prediction.
+    """
+    df = df.copy()
+
+    # Handle numeric features
+    numeric_features = ['tenure', 'MonthlyCharges', 'TotalCharges']
+    for col in numeric_features:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+        df[col].fillna(df[col].median(), inplace=True)
+
+    # Encode categorical features using trained encoders
+    cat_cols = df.select_dtypes(include='object').columns.tolist()
+    for col in cat_cols:
+        if col in encoders:
+            le = encoders[col]
+            df[col] = le.transform(df[col])
+        else:
+            df[col] = df[col].astype('category').cat.codes
+
+    # Scale numeric features
+    df[numeric_features] = scaler.transform(df[numeric_features])
+
+    return df.values
