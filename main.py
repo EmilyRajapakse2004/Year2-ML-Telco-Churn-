@@ -1,61 +1,48 @@
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
-import joblib
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
-from src.preprocessing import preprocess_dataset
-import os
+# main.py
 
-# Create results folder
-os.makedirs('results', exist_ok=True)
+import pandas as pd
+from src.preprocessing import preprocess_dataset
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from tensorflow import keras
+import pickle
 
 # Load dataset
-data = pd.read_csv('data/Telco-Customer-Churn.csv')
+data = pd.read_csv("data/Telco-Customer-Churn.csv")
 
 # Preprocess dataset
-X, y, encoders = preprocess_dataset(data)
+X, y, encoders, scaler = preprocess_dataset(data)
 
-# Scale numeric features
-numeric_features = ['tenure', 'MonthlyCharges', 'TotalCharges']
-scaler = StandardScaler()
-X[numeric_features] = scaler.fit_transform(X[numeric_features])
+# Save encoders & scaler
+pickle.dump(encoders, open("results/label_encoders.pkl", "wb"))
+pickle.dump(scaler, open("results/scaler.pkl", "wb"))
 
-# Split data
+# Train-test split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+print("\nData preprocessing done. Training models...\n")
 
-# ------------------ Decision Tree ------------------
-dt_model = DecisionTreeClassifier(random_state=42)
-dt_model.fit(X_train, y_train)
-y_pred_dt = dt_model.predict(X_test)
+# -------- Decision Tree --------
+dt = DecisionTreeClassifier(max_depth=6, random_state=42)
+dt.fit(X_train, y_train)
+dt_pred = dt.predict(X_test)
 
-print("===== Decision Tree Evaluation =====")
-print("Accuracy:", accuracy_score(y_test, y_pred_dt))
-print(classification_report(y_test, y_pred_dt))
-print("ROC-AUC:", roc_auc_score(y_test, y_pred_dt))
+print("Decision Tree Accuracy:", accuracy_score(y_test, dt_pred))
+print(classification_report(y_test, dt_pred))
 
-# Save Decision Tree and scaler
-joblib.dump(dt_model, 'results/dt_model.pkl')
-joblib.dump(scaler, 'results/scaler.pkl')
-joblib.dump(encoders, 'results/encoders.pkl')
+pickle.dump(dt, open("results/dt_model.pkl", "wb"))
 
-# ------------------ Neural Network ------------------
-nn_model = Sequential([
-    Dense(32, input_dim=X_train.shape[1], activation='relu'),
-    Dense(16, activation='relu'),
-    Dense(1, activation='sigmoid')
+
+# ---------- Neural Network ----------
+nn = keras.Sequential([
+    keras.layers.Dense(32, activation='relu', input_shape=(X_train.shape[1],)),
+    keras.layers.Dense(16, activation='relu'),
+    keras.layers.Dense(1, activation='sigmoid')
 ])
 
-nn_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-nn_model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=30, batch_size=32, verbose=2)
+nn.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+nn.fit(X_train, y_train, epochs=20, batch_size=32, validation_split=0.2)
 
-y_pred_nn = (nn_model.predict(X_test) > 0.5).astype(int)
-print("===== Neural Network Evaluation =====")
-print("Accuracy:", accuracy_score(y_test, y_pred_nn))
-print(classification_report(y_test, y_pred_nn))
-print("ROC-AUC:", roc_auc_score(y_test, y_pred_nn))
+nn.save("results/nn_model.keras")
 
-# Save Neural Network
-nn_model.save('results/nn_model.keras')
+print("\nTraining completed. Models saved in results/ folder.")
