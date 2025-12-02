@@ -1,48 +1,48 @@
+# predict_churn.py
+
+import pickle
 import pandas as pd
-import joblib
-from tensorflow.keras.models import load_model
+from tensorflow import keras
 from src.preprocessing import preprocess_single_customer
 
-# Load models and preprocessing tools
-dt_model = joblib.load('results/dt_model.pkl')
-scaler = joblib.load('results/scaler.pkl')
-encoders = joblib.load('results/encoders.pkl')
-nn_model = load_model('results/nn_model.keras')
+# Load models
+dt_model = pickle.load(open("results/dt_model.pkl", "rb"))
+nn_model = keras.models.load_model("results/nn_model.keras")
 
-# New customer info
-new_customer = {
-    'gender': 'Female',
-    'SeniorCitizen': 0,
-    'Partner': 'Yes',
-    'Dependents': 'No',
-    'tenure': 12,
-    'PhoneService': 'Yes',
-    'MultipleLines': 'No',
-    'InternetService': 'Fiber optic',
-    'OnlineSecurity': 'No',
-    'OnlineBackup': 'Yes',
-    'DeviceProtection': 'No',
-    'TechSupport': 'No',
-    'StreamingTV': 'Yes',
-    'StreamingMovies': 'Yes',
-    'Contract': 'Month-to-month',
-    'PaperlessBilling': 'Yes',
-    'PaymentMethod': 'Electronic check',
-    'MonthlyCharges': 75.5,
-    'TotalCharges': 900.0
+# Load encoders & scaler
+encoders = pickle.load(open("results/label_encoders.pkl", "rb"))
+scaler = pickle.load(open("results/scaler.pkl", "rb"))
+
+# Example new customer input
+customer = {
+    "gender": "Female",
+    "SeniorCitizen": 0,
+    "Partner": "Yes",
+    "Dependents": "No",
+    "tenure": 5,
+    "PhoneService": "Yes",
+    "MultipleLines": "No",
+    "InternetService": "Fiber optic",
+    "OnlineSecurity": "No",
+    "OnlineBackup": "Yes",
+    "DeviceProtection": "No",
+    "TechSupport": "No",
+    "StreamingTV": "Yes",
+    "StreamingMovies": "No",
+    "Contract": "Month-to-month",
+    "PaperlessBilling": "Yes",
+    "PaymentMethod": "Electronic check",
+    "MonthlyCharges": 85.50,
+    "TotalCharges": 250.00
 }
 
-# Convert to DataFrame
-new_customer_df = pd.DataFrame([new_customer])
-
-# Preprocess
-X_new = preprocess_single_customer(new_customer_df, scaler, encoders)
+# Preprocess new customer
+processed = preprocess_single_customer(customer, encoders, scaler)
 
 # Predictions
-dt_prediction = dt_model.predict(X_new)[0]
-nn_prediction = (nn_model.predict(X_new) > 0.5).astype(int)[0][0]
+dt_pred = dt_model.predict(processed)[0]
+nn_pred = nn_model.predict(processed)[0][0]
 
-# Map 0/1 to No/Yes
-prediction_map = {0: "No", 1: "Yes"}
-print("Decision Tree Prediction:", prediction_map[dt_prediction])
-print("Neural Network Prediction:", prediction_map[nn_prediction])
+print("\n--- CHURN PREDICTIONS ---")
+print("Decision Tree Prediction:", "Churn" if dt_pred == 1 else "Not Churn")
+print("Neural Network Prediction:", "Churn" if nn_pred > 0.5 else "Not Churn")
