@@ -1,57 +1,51 @@
+# src/preprocessing.py
+
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
+import numpy as np
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
-def preprocess_dataset(df):
-    """
-    Preprocess the full dataset for training
-    """
-    df = df.copy()
 
-    # Fix TotalCharges
-    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
-    df['TotalCharges'].fillna(df['TotalCharges'].median(), inplace=True)
+def preprocess_dataset(data):
+    """Preprocess full dataset"""
+
+    # Fix numeric column
+    data["TotalCharges"] = pd.to_numeric(data["TotalCharges"], errors="coerce")
+    data["TotalCharges"] = data["TotalCharges"].fillna(data["TotalCharges"].median())
 
     # Encode target
-    df['Churn'] = df['Churn'].map({'Yes': 1, 'No': 0})
+    data["Churn"] = data["Churn"].map({"Yes": 1, "No": 0})
 
-    # Encode categorical features
-    cat_cols = df.select_dtypes(include='object').columns.tolist()
-    cat_cols.remove('customerID') if 'customerID' in cat_cols else None
-
+    # Encode categorical
     encoders = {}
+    cat_cols = data.select_dtypes(include="object").columns.tolist()
+
     for col in cat_cols:
         le = LabelEncoder()
-        df[col] = le.fit_transform(df[col])
+        data[col] = le.fit_transform(data[col])
         encoders[col] = le
 
-    # Split features and target
-    X = df.drop(columns=['customerID', 'Churn'], errors='ignore')
-    y = df['Churn']
+    # Scale numeric
+    scaler = StandardScaler()
+    num_cols = ["tenure", "MonthlyCharges", "TotalCharges"]
+    data[num_cols] = scaler.fit_transform(data[num_cols])
 
-    return X, y, encoders
+    X = data.drop("Churn", axis=1)
+    y = data["Churn"]
 
-def preprocess_single_customer(df, scaler, encoders):
-    """
-    Preprocess a single customer DataFrame for prediction.
-    """
-    df = df.copy()
+    return X, y, encoders, scaler
 
-    # Handle numeric features
-    numeric_features = ['tenure', 'MonthlyCharges', 'TotalCharges']
-    for col in numeric_features:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-        df[col].fillna(df[col].median(), inplace=True)
 
-    # Encode categorical features using trained encoders
-    cat_cols = df.select_dtypes(include='object').columns.tolist()
-    for col in cat_cols:
-        if col in encoders:
-            le = encoders[col]
-            df[col] = le.transform(df[col])
-        else:
-            df[col] = df[col].astype('category').cat.codes
+def preprocess_single_customer(customer_dict, encoders, scaler):
+    """Preprocess a single customer for prediction"""
 
-    # Scale numeric features
-    df[numeric_features] = scaler.transform(df[numeric_features])
+    customer = pd.DataFrame([customer_dict])
 
-    return df.values
+    # Encode categorical
+    for col, le in encoders.items():
+        customer[col] = le.transform(customer[col])
+
+    # Scale numeric
+    num_cols = ["tenure", "MonthlyCharges", "TotalCharges"]
+    customer[num_cols] = scaler.transform(customer[num_cols])
+
+    return customer
