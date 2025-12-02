@@ -1,43 +1,37 @@
+# src/preprocessing.py
 import pandas as pd
-import numpy as np
 
-
-def preprocess_single_sample(df, scaler, encoders, feature_names, numeric_cols):
+def preprocess_single_sample(df, scaler, encoders, feature_names, numeric_cols=['tenure','MonthlyCharges','TotalCharges']):
     """
-    Preprocess a single-row DataFrame for prediction.
+    Preprocess single customer input for prediction.
 
     df: single-row DataFrame
-    scaler: fitted scaler for numeric features
-    encoders: dict of LabelEncoders for categorical features
-    feature_names: list of all features used in training
-    numeric_cols: list of numeric features
+    scaler: fitted scaler object for numeric features
+    encoders: dict of LabelEncoders for categorical columns
+    feature_names: list of final columns used during training
     """
     df = df.copy()
 
-    # 1️⃣ Validate input
+    # Check all required columns are present
     missing_cols = [col for col in feature_names if col not in df.columns]
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
 
-    # 2️⃣ Encode categorical columns
+    # Encode categorical features
     for col, le in encoders.items():
         if col in df.columns:
             try:
-                df[col] = le.transform([df[col][0]])
-            except ValueError:
-                raise ValueError(f"Invalid value for '{col}': {df[col][0]}. "
-                                 f"Expected one of: {list(le.classes_)}")
+                df[col] = le.transform(df[col].astype(str))
+            except ValueError as e:
+                raise ValueError(
+                    f"Column '{col}' has invalid input '{df[col].values[0]}'. "
+                    f"Expected values: {list(le.classes_)}"
+                ) from e
 
-    # 3️⃣ Scale numeric columns
-    df_numeric = df[numeric_cols].astype(float)
-    df_numeric_scaled = pd.DataFrame(scaler.transform(df_numeric), columns=numeric_cols)
+    # Scale numeric features
+    df[numeric_cols] = scaler.transform(df[numeric_cols])
 
-    # 4️⃣ Combine scaled numeric + encoded categorical in training order
-    final_df = pd.DataFrame(columns=feature_names)
-    for col in feature_names:
-        if col in numeric_cols:
-            final_df[col] = df_numeric_scaled[col]
-        else:
-            final_df[col] = df[col]
+    # Reindex to match training features
+    df = df.reindex(columns=feature_names, fill_value=0)
 
-    return final_df.values
+    return df
