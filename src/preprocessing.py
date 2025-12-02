@@ -1,46 +1,43 @@
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+import numpy as np
 
-def preprocess_training_data(df):
+
+def preprocess_single_sample(df, scaler, encoders, feature_names, numeric_cols):
+    """
+    Preprocess a single-row DataFrame for prediction.
+
+    df: single-row DataFrame
+    scaler: fitted scaler for numeric features
+    encoders: dict of LabelEncoders for categorical features
+    feature_names: list of all features used in training
+    numeric_cols: list of numeric features
+    """
     df = df.copy()
 
-    df.drop(columns=["customerID"], errors="ignore", inplace=True)
-    df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
-    df.fillna(0, inplace=True)
+    # 1️⃣ Validate input
+    missing_cols = [col for col in feature_names if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
 
-    y = df["Churn"].replace({"Yes": 1, "No": 0})
-    df.drop(columns=["Churn"], inplace=True)
-
-    encoders = {}
-    cat_cols = df.select_dtypes(include="object").columns
-
-    for col in cat_cols:
-        le = LabelEncoder()
-        df[col] = le.fit_transform(df[col].astype(str))
-        encoders[col] = le
-
-    num_cols = df.select_dtypes(include=["int64", "float64"]).columns
-    scaler = StandardScaler()
-    df[num_cols] = scaler.fit_transform(df[num_cols])
-
-    return df.values, y.values, scaler, encoders, list(df.columns)
-
-def preprocess_single_sample(df, scaler, encoders, feature_names):
-    df = df.copy()
-
-    # Encode categorical features
+    # 2️⃣ Encode categorical columns
     for col, le in encoders.items():
-        if col in df:
-            df[col] = le.transform(df[col].astype(str))
+        if col in df.columns:
+            try:
+                df[col] = le.transform([df[col][0]])
+            except ValueError:
+                raise ValueError(f"Invalid value for '{col}': {df[col][0]}. "
+                                 f"Expected one of: {list(le.classes_)}")
 
-    # Convert numeric columns safely
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="ignore")
+    # 3️⃣ Scale numeric columns
+    df_numeric = df[numeric_cols].astype(float)
+    df_numeric_scaled = pd.DataFrame(scaler.transform(df_numeric), columns=numeric_cols)
 
-    # Put in correct column order
-    df = df.reindex(columns=feature_names, fill_value=0)
+    # 4️⃣ Combine scaled numeric + encoded categorical in training order
+    final_df = pd.DataFrame(columns=feature_names)
+    for col in feature_names:
+        if col in numeric_cols:
+            final_df[col] = df_numeric_scaled[col]
+        else:
+            final_df[col] = df[col]
 
-    # Scale numeric
-    df[df.columns] = scaler.transform(df)
-
-    return df.values
+    return final_df.values
