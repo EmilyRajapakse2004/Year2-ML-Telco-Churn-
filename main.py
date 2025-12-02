@@ -1,58 +1,110 @@
-import pandas as pd
-import pickle
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
-from src.preprocessing import preprocess_data
+from src.data_preprocessing import load_and_clean_data, preprocess_data
+from src.models import train_decision_tree, train_neural_network
+from src.evaluation import evaluate_model
+from src.predict import predict_new_customer
+import joblib
+import os
 
-# Load dataset
-data = pd.read_csv("data/Telco-Customer-Churn.csv")
+# ------------------------------
+# 1️⃣ Load and preprocess data
+# ------------------------------
+data = load_and_clean_data("data/Telco-Customer-Churn.csv")
+X_train, X_test, y_train, y_test, scaler, num_cols = preprocess_data(data)
 
-# Preprocess
-X, y, encoders, scaler, feature_names = preprocess_data(data)
+# ------------------------------
+# 2️⃣ Train or load models
+# ------------------------------
+if not os.path.exists("results/decision_tree_model.pkl"):
+    dt_model = train_decision_tree(X_train, y_train)
+    joblib.dump(dt_model, "results/decision_tree_model.pkl")
+else:
+    dt_model = joblib.load("results/decision_tree_model.pkl")
 
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+if not os.path.exists("results/neural_network_model.keras"):
+    nn_model, history = train_neural_network(X_train, y_train)
+    nn_model.save("results/neural_network_model.keras")
+else:
+    nn_model = None  # Will be loaded in predict function
 
-# ===== Decision Tree =====
-dt_model = DecisionTreeClassifier(max_depth=5, random_state=42)
-dt_model.fit(X_train, y_train)
+# ------------------------------
+# 3️⃣ Evaluate models
+# ------------------------------
+print("\n-------------------------------------------------------------------")
+print("Evaluating Decision Tree:")
+evaluate_model(dt_model, X_test, y_test, model_type="dt")
 
-y_pred_dt = dt_model.predict(X_test)
+print("\n-------------------------------------------------------------------")
 
-print("===== Decision Tree Evaluation =====")
-print(classification_report(y_test, y_pred_dt))
-print("ROC-AUC:", roc_auc_score(y_test, y_pred_dt))
+print("\nEvaluating Neural Network:")
+evaluate_model(nn_model if nn_model else "results/neural_network_model.keras",
+               X_test, y_test, model_type="nn")
+print("\n-------------------------------------------------------------------")
 
-# Save DT model
-with open("results/dt_model.pkl", "wb") as f:
-    pickle.dump(dt_model, f)
+# ------------------------------
+# 4️⃣ Prepare input validation options
+# ------------------------------
+categorical_options = {
+    'gender': ['Male', 'Female'],
+    'Partner': ['Yes', 'No'],
+    'Dependents': ['Yes', 'No'],
+    'PhoneService': ['Yes', 'No'],
+    'MultipleLines': ['Yes', 'No', 'No phone service'],
+    'InternetService': ['DSL', 'Fiber optic', 'No'],
+    'OnlineSecurity': ['Yes', 'No', 'No internet service'],
+    'OnlineBackup': ['Yes', 'No', 'No internet service'],
+    'DeviceProtection': ['Yes', 'No', 'No internet service'],
+    'TechSupport': ['Yes', 'No', 'No internet service'],
+    'StreamingTV': ['Yes', 'No', 'No internet service'],
+    'StreamingMovies': ['Yes', 'No', 'No internet service'],
+    'Contract': ['Month-to-month', 'One year', 'Two year'],
+    'PaperlessBilling': ['Yes', 'No'],
+    'PaymentMethod': ['Electronic check', 'Mailed check', 'Bank transfer (automatic)', 'Credit card (automatic)']
+}
 
-# ===== Neural Network =====
-nn_model = Sequential([
-    Dense(32, activation='relu', input_shape=(X_train.shape[1],)),
-    Dense(16, activation='relu'),
-    Dense(1, activation='sigmoid')
-])
-nn_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-nn_model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=30, batch_size=32)
+numeric_fields = ['SeniorCitizen', 'tenure', 'MonthlyCharges', 'TotalCharges']
 
-# Evaluate NN
-y_pred_nn = (nn_model.predict(X_test) > 0.5).astype(int)
-print("===== Neural Network Evaluation =====")
-print(classification_report(y_test, y_pred_nn))
-print("ROC-AUC:", roc_auc_score(y_test, y_pred_nn))
+# ------------------------------
+# 5️⃣ Customer prediction loop
+# ------------------------------
+while True:
+    print("\nEnter new customer details to predict churn:")
 
-# Save NN model
-nn_model.save("results/nn_model.keras")
+    # Collect categorical input with validation
+    new_customer = {}
+    for attr in categorical_options.keys():
+        while True:
+            value = input(f"{attr} {categorical_options[attr]}: ").strip()
+            if value in categorical_options[attr]:
+                new_customer[attr] = value
+                break
+            else:
+                print(f"Invalid input. Please enter one of {categorical_options[attr]}")
 
-# Save scaler, encoders, feature_names
-with open("results/scaler.pkl", "wb") as f:
-    pickle.dump(scaler, f)
-with open("results/encoders.pkl", "wb") as f:
-    pickle.dump(encoders, f)
-with open("results/feature_names.pkl", "wb") as f:
-    pickle.dump(feature_names, f)
+    # Collect numeric input with validation
+    for attr in numeric_fields:
+        while True:
+            try:
+                value = float(input(f"{attr}: ").strip())
+                new_customer[attr] = value
+                break
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+    # Choose model
+    model_choice = ""
+    while model_choice not in ["nn", "dt"]:
+        model_choice = input("Choose model for prediction (nn/dt): ").lower()
+
+    # Make prediction
+    prediction = predict_new_customer(new_customer, X_train.columns, scaler, num_cols,
+                                      dt_model=dt_model, nn_model_path="results/neural_network_model.keras",
+                                      model_type=model_choice)
+
+    print("\nPrediction for this customer:", prediction)
+    print("\n-------------------------------------------------------------------")
+
+    # Ask if user wants to predict another customer
+    again = input("\nDo you want to predict another customer? (yes/no): ").strip().lower()
+    if again != "yes":
+        print("Exiting system. Goodbye!")
+        break
