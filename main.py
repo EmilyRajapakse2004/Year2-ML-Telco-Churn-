@@ -1,72 +1,58 @@
 import pandas as pd
 import pickle
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.layers import Dense
+from src.preprocessing import preprocess_data
 
-from src.preprocessing import preprocess_training_data
-from src.utils import save_pickle
+# Load dataset
+data = pd.read_csv("data/Telco-Customer-Churn.csv")
 
-DATA_PATH = "data/Telco-Customer-Churn.csv"
-RESULTS_PATH = "results/"
+# Preprocess
+X, y, encoders, scaler, feature_names = preprocess_data(data)
 
-def build_neural_network(input_dim):
-    model = Sequential([
-        Dense(64, activation="relu", input_dim=input_dim),
-        Dropout(0.3),
-        Dense(32, activation="relu"),
-        Dense(1, activation="sigmoid")
-    ])
-    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
-    return model
+# Split data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-def main():
-    df = pd.read_csv(DATA_PATH)
-    X, y, scaler, encoders, feature_names = preprocess_training_data(df)
+# ===== Decision Tree =====
+dt_model = DecisionTreeClassifier(max_depth=5, random_state=42)
+dt_model.fit(X_train, y_train)
 
-    # Save preprocessing objects
-    save_pickle(encoders, RESULTS_PATH + "encoders.pkl")
-    save_pickle(scaler, RESULTS_PATH + "scaler.pkl")
-    save_pickle(feature_names, RESULTS_PATH + "feature_names.pkl")
+y_pred_dt = dt_model.predict(X_test)
 
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+print("===== Decision Tree Evaluation =====")
+print(classification_report(y_test, y_pred_dt))
+print("ROC-AUC:", roc_auc_score(y_test, y_pred_dt))
 
-    # Decision Tree
-    dt = DecisionTreeClassifier(max_depth=6, criterion="gini")
-    dt.fit(X_train, y_train)
-    y_pred_dt = dt.predict(X_test)
+# Save DT model
+with open("results/dt_model.pkl", "wb") as f:
+    pickle.dump(dt_model, f)
 
-    print("\n===== DECISION TREE REPORT =====")
-    print(classification_report(y_test, y_pred_dt))
+# ===== Neural Network =====
+nn_model = Sequential([
+    Dense(32, activation='relu', input_shape=(X_train.shape[1],)),
+    Dense(16, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+nn_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+nn_model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=30, batch_size=32)
 
-    save_pickle(dt, RESULTS_PATH + "dt_model.pkl")
+# Evaluate NN
+y_pred_nn = (nn_model.predict(X_test) > 0.5).astype(int)
+print("===== Neural Network Evaluation =====")
+print(classification_report(y_test, y_pred_nn))
+print("ROC-AUC:", roc_auc_score(y_test, y_pred_nn))
 
-    # Neural Network
-    nn = build_neural_network(X.shape[1])
-    early_stop = EarlyStopping(monitor="loss", patience=5, restore_best_weights=True)
+# Save NN model
+nn_model.save("results/nn_model.keras")
 
-    nn.fit(X_train, y_train, epochs=50, batch_size=32, verbose=1, callbacks=[early_stop])
-    nn.save(RESULTS_PATH + "nn_model.keras")
-
-    y_pred_nn = (nn.predict(X_test) > 0.5).astype(int)
-    print("\n===== NEURAL NETWORK REPORT =====")
-    print(classification_report(y_test, y_pred_nn))
-
-    # Save metrics summary
-    metrics = {
-        "DecisionTree_Accuracy": accuracy_score(y_test, y_pred_dt),
-        "NeuralNet_Accuracy": accuracy_score(y_test, y_pred_nn)
-    }
-    save_pickle(metrics, RESULTS_PATH + "metrics_summary.pkl")
-
-    print("\nTraining complete. All files saved in /results")
-
-if __name__ == "__main__":
-    main()
+# Save scaler, encoders, feature_names
+with open("results/scaler.pkl", "wb") as f:
+    pickle.dump(scaler, f)
+with open("results/encoders.pkl", "wb") as f:
+    pickle.dump(encoders, f)
+with open("results/feature_names.pkl", "wb") as f:
+    pickle.dump(feature_names, f)
