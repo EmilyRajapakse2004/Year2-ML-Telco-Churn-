@@ -1,52 +1,46 @@
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
-
-def preprocess_dataset(df):
+def preprocess_training_data(df):
     df = df.copy()
 
+    df.drop(columns=["customerID"], errors="ignore", inplace=True)
     df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
     df.fillna(0, inplace=True)
 
-    y = df["Churn"].apply(lambda x: 1 if x == "Yes" else 0)
-    df = df.drop(["customerID", "Churn"], axis=1)
-
-    numeric_cols = ["tenure", "MonthlyCharges", "TotalCharges"]
-    categorical_cols = [c for c in df.columns if c not in numeric_cols]
+    y = df["Churn"].replace({"Yes": 1, "No": 0})
+    df.drop(columns=["Churn"], inplace=True)
 
     encoders = {}
-    for col in categorical_cols:
+    cat_cols = df.select_dtypes(include="object").columns
+
+    for col in cat_cols:
         le = LabelEncoder()
         df[col] = le.fit_transform(df[col].astype(str))
         encoders[col] = le
 
+    num_cols = df.select_dtypes(include=["int64", "float64"]).columns
     scaler = StandardScaler()
-    df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    df[num_cols] = scaler.fit_transform(df[num_cols])
 
-    feature_names = df.columns.tolist()
-    X = df.values
-
-    return X, y.values, scaler, encoders, feature_names
-
+    return df.values, y.values, scaler, encoders, list(df.columns)
 
 def preprocess_single_sample(df, scaler, encoders, feature_names):
     df = df.copy()
 
-    df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce").fillna(0)
-
-    numeric_cols = ["tenure", "MonthlyCharges", "TotalCharges"]
-    categorical_cols = [c for c in df.columns if c not in numeric_cols]
-
-    for col in categorical_cols:
-        if col in encoders:
-            le = encoders[col]
-            df[col] = df[col].map(lambda x: x if x in le.classes_ else "Unknown")
-            if "Unknown" not in le.classes_:
-                le.classes_ = list(le.classes_) + ["Unknown"]
+    # Encode categorical features
+    for col, le in encoders.items():
+        if col in df:
             df[col] = le.transform(df[col].astype(str))
 
-    df[numeric_cols] = scaler.transform(df[numeric_cols])
+    # Convert numeric columns safely
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="ignore")
 
+    # Put in correct column order
     df = df.reindex(columns=feature_names, fill_value=0)
+
+    # Scale numeric
+    df[df.columns] = scaler.transform(df)
 
     return df.values
