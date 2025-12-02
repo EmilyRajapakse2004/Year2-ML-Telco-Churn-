@@ -1,27 +1,20 @@
-import pickle
 import pandas as pd
-from tensorflow.keras.models import load_model
+import pickle
+import tensorflow as tf
 from src.preprocessing import preprocess_single_sample
 
-# Load trained models and preprocessing objects
+# Load saved models and preprocessing objects
 print("Loading models and preprocessing objects...")
 dt_model = pickle.load(open("results/dt_model.pkl", "rb"))
-nn_model = load_model("results/nn_model.keras")
+nn_model = tf.keras.models.load_model("results/nn_model.keras")
 scaler = pickle.load(open("results/scaler.pkl", "rb"))
 encoders = pickle.load(open("results/encoders.pkl", "rb"))
 feature_names = pickle.load(open("results/feature_names.pkl", "rb"))
 
-# Define expected inputs
-categorical_cols = [
-    'gender', 'Partner', 'Dependents', 'PhoneService', 'MultipleLines',
-    'InternetService', 'OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
-    'TechSupport', 'StreamingTV', 'StreamingMovies', 'Contract',
-    'PaperlessBilling', 'PaymentMethod', 'SeniorCitizen'
-]
-
 numeric_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
 
-valid_values = {
+# Define expected categories for validation
+expected_inputs = {
     'gender': ['Female', 'Male'],
     'Partner': ['No', 'Yes'],
     'Dependents': ['No', 'Yes'],
@@ -41,47 +34,47 @@ valid_values = {
 }
 
 def get_user_input():
-    user_data = {}
-    for col in categorical_cols:
+    data = {}
+    for feature, options in expected_inputs.items():
         while True:
-            value = input(f"{col} {valid_values[col]}: ")
-            # Convert to correct type for SeniorCitizen
-            if col == 'SeniorCitizen':
+            value = input(f"{feature} {options}: ")
+            if feature == 'SeniorCitizen':
                 try:
                     value = int(value)
                 except:
-                    print("Invalid input. Enter 0 or 1.")
+                    print(f"Invalid input. Please enter 0 or 1")
                     continue
-            if value not in valid_values[col]:
-                print(f"Invalid input for {col}. Expected: {valid_values[col]}")
+            if value not in options:
+                print(f"Input error: Invalid input for {feature}. Expected: {options}")
             else:
-                user_data[col] = value
+                data[feature] = value
                 break
-    for col in numeric_cols:
+    for num in numeric_cols:
         while True:
+            value = input(f"{num}: ")
             try:
-                value = float(input(f"{col}: "))
-                user_data[col] = value
+                data[num] = float(value)
                 break
             except:
-                print(f"Invalid input for {col}. Enter a numeric value.")
-    return pd.DataFrame([user_data])
+                print(f"Invalid input. Please enter a numeric value for {num}")
+    return pd.DataFrame([data])
 
 def main():
-    print("Please enter new customer details:\n")
     while True:
+        print("\nPlease enter new customer details:\n")
+        user_df = get_user_input()
         try:
-            user_df = get_user_input()
-            X = preprocess_single_sample(user_df, scaler, encoders, feature_names, numeric_cols=numeric_cols)
-            # Predict with Decision Tree
+            X = preprocess_single_sample(user_df, scaler, encoders, feature_names, numeric_cols)
             dt_pred = dt_model.predict(X)[0]
-            print(f"\nDecision Tree Prediction: {'Churn' if dt_pred==1 else 'No Churn'}")
-            # Predict with Neural Network
-            nn_pred = nn_model.predict(X)[0][0]
-            print(f"Neural Network Prediction: {'Churn' if nn_pred>=0.5 else 'No Churn'}")
+            nn_pred_prob = nn_model.predict(X)[0][0]
+            nn_pred = int(nn_pred_prob > 0.5)
+            churn_map = {0: "No", 1: "Yes"}
+            print("\nPrediction Results:")
+            print(f"Decision Tree: {churn_map[dt_pred]}")
+            print(f"Neural Network: {churn_map[nn_pred]} (probability: {nn_pred_prob:.2f})")
             break
         except ValueError as e:
-            print(f"Input error: {e}\nPlease enter the details again.\n")
+            print(f"\n{e}\nPlease enter the details again.")
 
 if __name__ == "__main__":
     main()
