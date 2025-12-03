@@ -4,6 +4,26 @@ from src.evaluation import evaluate_model
 from src.predict import predict_new_customer
 import joblib
 import os
+import pandas as pd
+
+# ------------------------------
+# 0️⃣ Initialize CSV for new customers
+# ------------------------------
+NEW_CUSTOMER_CSV = "results/new_customers.csv"
+os.makedirs("results", exist_ok=True)  # Ensure folder exists
+
+# Define CSV columns
+csv_columns = [
+    'gender', 'Partner', 'Dependents', 'PhoneService', 'MultipleLines',
+    'InternetService', 'OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
+    'TechSupport', 'StreamingTV', 'StreamingMovies', 'Contract',
+    'PaperlessBilling', 'PaymentMethod', 'SeniorCitizen', 'tenure',
+    'MonthlyCharges', 'TotalCharges', 'Prediction'
+]
+
+# Create a fresh CSV at runtime with headers
+pd.DataFrame(columns=csv_columns).to_csv(NEW_CUSTOMER_CSV, index=False)
+print("Temporary new customer CSV initialized:", NEW_CUSTOMER_CSV)
 
 # ------------------------------
 # 1️⃣ Load and preprocess data
@@ -34,8 +54,7 @@ print("Evaluating Decision Tree:")
 evaluate_model(dt_model, X_test, y_test, model_type="dt")
 
 print("\n-------------------------------------------------------------------")
-
-print("\nEvaluating Neural Network:")
+print("Evaluating Neural Network:")
 evaluate_model(nn_model if nn_model else "results/neural_network_model.keras",
                X_test, y_test, model_type="nn")
 print("\n-------------------------------------------------------------------")
@@ -64,7 +83,29 @@ categorical_options = {
 numeric_fields = ['SeniorCitizen', 'tenure', 'MonthlyCharges', 'TotalCharges']
 
 # ------------------------------
-# 5️⃣ Customer prediction loop
+# 5️⃣ Function to save customer to CSV
+# ------------------------------
+def save_new_customer(customer_dict):
+    # Add prediction column if missing
+    if 'Prediction' not in customer_dict:
+        customer_dict['Prediction'] = ""
+
+    # Convert to DataFrame
+    df = pd.DataFrame([customer_dict])
+
+    # Reorder columns
+    df = df.reindex(columns=csv_columns)
+
+    # Append to CSV (or create new)
+    if os.path.exists(NEW_CUSTOMER_CSV) and os.path.getsize(NEW_CUSTOMER_CSV) > 0:
+        df.to_csv(NEW_CUSTOMER_CSV, mode="a", header=False, index=False)
+    else:
+        df.to_csv(NEW_CUSTOMER_CSV, mode="w", header=True, index=False)
+
+    print("Customer saved to CSV:", NEW_CUSTOMER_CSV)
+
+# ------------------------------
+# 6️⃣ Customer prediction loop
 # ------------------------------
 while True:
     print("\nEnter new customer details to predict churn:")
@@ -96,12 +137,22 @@ while True:
         model_choice = input("Choose model for prediction (nn/dt): ").lower()
 
     # Make prediction
-    prediction = predict_new_customer(new_customer, X_train.columns, scaler, num_cols,
-                                      dt_model=dt_model, nn_model_path="results/neural_network_model.keras",
-                                      model_type=model_choice)
+    prediction = predict_new_customer(
+        new_customer,
+        X_train.columns,
+        scaler,
+        num_cols,
+        dt_model=dt_model,
+        nn_model_path="results/neural_network_model.keras",
+        model_type=model_choice
+    )
 
     print("\nPrediction for this customer:", prediction)
-    print("\n-------------------------------------------------------------------")
+
+    # Save customer + prediction to CSV
+    customer_with_pred = new_customer.copy()
+    customer_with_pred['Prediction'] = prediction
+    save_new_customer(customer_with_pred)
 
     # Ask if user wants to predict another customer
     again = input("\nDo you want to predict another customer? (yes/no): ").strip().lower()
