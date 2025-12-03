@@ -1,0 +1,9 @@
+Model,Hyperparameter,Value
+Decision Tree,max_depth,5
+Decision Tree,random_state,42
+Neural Network,Layers,"[32,16,1]"
+Neural Network,Activation Functions,"ReLU (hidden), Sigmoid (output)"
+Neural Network,Optimizer,Adam
+Neural Network,Loss Function,Binary Crossentropy
+Neural Network,Epochs,50
+Neural Network,Validation Split,0.2
