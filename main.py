@@ -20,9 +20,7 @@ RESULTS_CSV = "results/new_customers.csv"
 os.makedirs("results", exist_ok=True)
 
 
-# ============================================================
 # 1. LOAD DATASET
-# ============================================================
 def load_dataset():
     global df
     try:
@@ -32,9 +30,8 @@ def load_dataset():
         print(f"✘ Error loading dataset: {e}")
 
 
-# ============================================================
 # 2. DISPLAY BASIC EDA
-# ============================================================
+
 def show_eda():
     if df is None:
         print("✘ Load dataset first!")
@@ -47,9 +44,7 @@ def show_eda():
     print(f"Churn Distribution: {df['Churn'].value_counts().to_dict()}")
 
 
-# ============================================================
 # 3. PREPROCESS DATA
-# ============================================================
 def preprocess():
     global X_train, X_test, y_train, y_test, scaler, num_cols, X_columns
 
@@ -62,9 +57,7 @@ def preprocess():
     print("✔ Preprocessing completed!")
 
 
-# ============================================================
 # 4. TRAIN DECISION TREE
-# ============================================================
 def train_dt():
     global dt_model
     if X_train is None:
@@ -77,9 +70,7 @@ def train_dt():
     print("✔ Decision Tree Training Complete")
 
 
-# ============================================================
 # 5. TRAIN NEURAL NETWORK
-# ============================================================
 def train_nn():
     global nn_model
     if X_train is None:
@@ -93,9 +84,7 @@ def train_nn():
     evaluate_model(nn_model, X_test, y_test, model_type="nn")
 
 
-# ============================================================
 # 6. PREDICT NEW CUSTOMER
-# ============================================================
 def predict_customer():
     if scaler is None or X_columns is None:
         print("✘ Preprocess data & train at least one model first!")
@@ -176,9 +165,7 @@ def predict_customer():
     print(f"Customer saved to {RESULTS_CSV}")
 
 
-# ============================================================
 # MENU
-# ============================================================
 def menu():
     while True:
         print("\n========= TELCO CHURN SYSTEM =========")
